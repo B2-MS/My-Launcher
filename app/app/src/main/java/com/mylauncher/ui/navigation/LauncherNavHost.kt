@@ -11,7 +11,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.mylauncher.data.model.AccentColor
+import com.mylauncher.data.model.toComposeColor
 import com.mylauncher.ui.screens.AppListScreen
 import com.mylauncher.ui.screens.SettingsScreen
 import com.mylauncher.ui.screens.StartScreen
@@ -27,11 +27,7 @@ fun LauncherNavHost(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val accentColor = try {
-        AccentColor.valueOf(uiState.preferences.accentColorName)
-    } catch (e: Exception) {
-        AccentColor.COBALT
-    }
+    val accentColor = uiState.preferences.accentColorArgb.toComposeColor()
 
     NavHost(
         navController = navController,
@@ -74,14 +70,26 @@ fun LauncherNavHost(
                         tiles = uiState.tiles,
                         apps = uiState.apps,
                         accentColor = accentColor,
-                        isDarkTheme = uiState.preferences.isDarkTheme,
-                        gridColumns = uiState.preferences.gridColumns,
                         tileOpacity = uiState.preferences.globalTileOpacity,
+                        bevelEnabled = uiState.preferences.bevelEnabled,
+                        bevelDepth = uiState.preferences.bevelDepth,
                         isEditMode = uiState.isEditMode,
+                        expandedGroups = uiState.expandedGroups,
                         onTileTap = { packageName -> viewModel.launchApp(packageName) },
                         onTileLongPress = { viewModel.toggleEditMode() },
                         onUnpinTile = { tileId -> viewModel.unpinTile(tileId) },
-                        onResizeTile = { tileId -> viewModel.resizeTile(tileId) },
+                        onSetTileSpans = { tileId, colSpan, rowSpan -> viewModel.setTileSpans(tileId, colSpan, rowSpan) },
+                        onToggleLiveTile = { tileId -> viewModel.toggleLiveTile(tileId) },
+                        onSwapTiles = { fromId, toId -> viewModel.swapTiles(fromId, toId) },
+                        onCreateGroup = { id1, id2 -> viewModel.createGroup(id1, id2) },
+                        onAddToGroup = { tileId, groupId -> viewModel.addToGroup(tileId, groupId) },
+                        onUngroupTile = { tileId -> viewModel.ungroupTile(tileId) },
+                        onSwapGroupTiles = { id1, id2 -> viewModel.swapGroupTiles(id1, id2) },
+                        onMoveGroupTile = { tileId, col, row -> viewModel.moveGroupTile(tileId, col, row) },
+                        onToggleGroupExpanded = { groupId -> viewModel.toggleGroupExpanded(groupId) },
+                        onMoveTileToGrid = { tileId, col, row -> viewModel.moveTileToGrid(tileId, col, row) },
+                        onMoveGroupToGrid = { groupId, col, row -> viewModel.moveGroupToGrid(groupId, col, row) },
+                        onRenameGroup = { groupId, newName -> viewModel.renameGroup(groupId, newName) },
                         onNavigateToAppList = {
                             coroutineScope.launch {
                                 pagerState.animateScrollToPage(1)
@@ -93,7 +101,7 @@ fun LauncherNavHost(
                     1 -> AppListScreen(
                         apps = uiState.apps,
                         accentColor = accentColor,
-                        isDarkTheme = uiState.preferences.isDarkTheme,
+                        darkModeEnabled = uiState.preferences.darkModeEnabled,
                         onAppTap = { packageName ->
                             viewModel.launchApp(packageName)
                         },
@@ -114,15 +122,22 @@ fun LauncherNavHost(
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 currentAccentColor = accentColor,
-                isDarkTheme = uiState.preferences.isDarkTheme,
-                gridColumns = uiState.preferences.gridColumns,
+                accentColorArgb = uiState.preferences.accentColorArgb,
                 tileOpacity = uiState.preferences.globalTileOpacity,
                 animationIntervalMs = uiState.preferences.tileAnimationIntervalMs,
+                bevelEnabled = uiState.preferences.bevelEnabled,
+                bevelDepth = uiState.preferences.bevelDepth,
+                darkModeEnabled = uiState.preferences.darkModeEnabled,
+                savedThemes = uiState.savedThemes,
                 onAccentColorChanged = { viewModel.updateAccentColor(it) },
-                onDarkThemeChanged = { viewModel.updateDarkTheme(it) },
-                onGridColumnsChanged = { viewModel.updateGridColumns(it) },
                 onTileOpacityChanged = { viewModel.updateTileOpacity(it) },
                 onAnimationIntervalChanged = { viewModel.updateAnimationInterval(it) },
+                onBevelEnabledChanged = { viewModel.updateBevelEnabled(it) },
+                onBevelDepthChanged = { viewModel.updateBevelDepth(it) },
+                onDarkModeChanged = { viewModel.updateDarkMode(it) },
+                onSaveTheme = { name -> viewModel.saveCurrentAsTheme(name) },
+                onApplyTheme = { theme -> viewModel.applyTheme(theme) },
+                onDeleteTheme = { themeId -> viewModel.deleteTheme(themeId) },
                 onNavigateBack = { navController.popBackStack() }
             )
         }

@@ -32,18 +32,37 @@ Quick rebuild and deploy for testing My Launcher during development.
 
 With the app running on a device or emulator, verify:
 
-- [ ] App launches and sets as default launcher
-- [ ] Home screen renders with app icons
-- [ ] App drawer opens and lists all installed apps
-- [ ] App search filters results correctly
-- [ ] Tapping an app icon launches the correct app
-- [ ] Long-press shows app options (uninstall, info, remove)
-- [ ] Widgets can be added and resized
-- [ ] Folders can be created by dragging apps together
-- [ ] Swipe gestures trigger configured actions
-- [ ] Wallpaper displays correctly behind launcher
-- [ ] Theme/colors apply across all screens
-- [ ] Back button / home gesture returns to home screen
+**Start Screen**
+- [ ] App launches and displays the tile grid
+- [ ] Tiles show correct app icons and names
+- [ ] Tapping a tile launches the correct app
+- [ ] Vertical scrolling works when many tiles are present
+- [ ] Wallpaper is visible behind semi-transparent tiles
+
+**Edit Mode**
+- [ ] Long-press enters edit mode (tiles shrink, size labels appear)
+- [ ] Unpin (✕) buttons remove tiles
+- [ ] Tap tile opens Tile Settings Dialog (width/height sliders, live tile toggle)
+- [ ] Drag & drop moves tiles to new positions with drop target outline
+- [ ] "Done" button exits edit mode
+
+**Tile Groups**
+- [ ] Drag tile onto another + hold ~1s creates a group
+- [ ] Tap group expands/collapses member tiles
+- [ ] Tap group in edit mode opens rename dialog
+- [ ] Drag tile out of expanded group ungroups it
+
+**App List**
+- [ ] Swipe right or tap "All Apps →" opens alphabetical app list
+- [ ] Search filters apps in real time
+- [ ] Tap launches app, long-press pins to Start Screen
+
+**Settings**
+- [ ] Accent color picker changes tile colors globally
+- [ ] Tile transparency slider works (0%–100%)
+- [ ] Bevel toggle and depth slider adjust glass effect
+- [ ] Dark mode toggle applies to Settings & App List
+- [ ] Theme save / apply / delete works
 
 ---
 

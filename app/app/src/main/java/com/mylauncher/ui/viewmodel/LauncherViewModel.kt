@@ -9,6 +9,7 @@ import com.mylauncher.data.preferences.LauncherPreferences
 import com.mylauncher.data.preferences.PreferencesManager
 import com.mylauncher.data.repository.AppRepository
 import com.mylauncher.data.repository.TileRepository
+import java.util.UUID
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -18,6 +19,8 @@ data class LauncherUiState(
     val tiles: List<Tile> = emptyList(),
     val apps: List<AppInfo> = emptyList(),
     val preferences: LauncherPreferences = LauncherPreferences(),
+    val expandedGroups: Set<String> = emptySet(),
+    val savedThemes: List<SavedTheme> = emptyList(),
     val isEditMode: Boolean = false,
     val isLoading: Boolean = true
 )
@@ -48,6 +51,20 @@ class LauncherViewModel @Inject constructor(
             }
         }
 
+        // Observe expanded groups
+        viewModelScope.launch {
+            tileRepository.expandedGroups.collect { expanded ->
+                _uiState.update { it.copy(expandedGroups = expanded) }
+            }
+        }
+
+        // Observe saved themes
+        viewModelScope.launch {
+            preferencesManager.savedThemesFlow.collect { themes ->
+                _uiState.update { it.copy(savedThemes = themes) }
+            }
+        }
+
         // Load apps and create default tiles
         viewModelScope.launch {
             loadApps()
@@ -60,16 +77,20 @@ class LauncherViewModel @Inject constructor(
 
         // If no tiles exist yet, seed with some defaults from installed apps
         if (tileRepository.tiles.value.isEmpty() && apps.isNotEmpty()) {
-            val defaultTiles = apps.take(12).mapIndexed { index, app ->
+            val defaultTiles = apps
+                .filter { it.packageName != "com.mylauncher" }
+                .take(12)
+                .mapIndexed { index, app ->
+                val col = (index % 3) * 2   // 0, 2, 4, 0, 2, 4, ...
+                val row = (index / 3) * 2   // 0, 0, 0, 2, 2, 2, ...
                 Tile(
                     packageName = app.packageName,
                     appName = app.appName,
-                    size = when {
-                        index == 0 -> TileSize.WIDE
-                        index % 4 == 0 -> TileSize.SMALL
-                        else -> TileSize.MEDIUM
-                    },
-                    position = index
+                    columnSpan = 2,
+                    rowSpan = 2,
+                    position = index,
+                    gridCol = col,
+                    gridRow = row
                 )
             }
             tileRepository.setTiles(defaultTiles)
@@ -101,7 +122,8 @@ class LauncherViewModel @Inject constructor(
             Tile(
                 packageName = appInfo.packageName,
                 appName = appInfo.appName,
-                size = TileSize.MEDIUM
+                columnSpan = 2,
+                rowSpan = 2
             )
         )
     }
@@ -110,24 +132,32 @@ class LauncherViewModel @Inject constructor(
         tileRepository.removeTile(tileId)
     }
 
-    fun resizeTile(tileId: String) {
-        tileRepository.resizeTile(tileId)
+    fun setTileSpans(tileId: String, columnSpan: Int, rowSpan: Int) {
+        tileRepository.setTileSpans(tileId, columnSpan, rowSpan)
+    }
+
+    fun toggleLiveTile(tileId: String) {
+        tileRepository.toggleLiveTile(tileId)
+    }
+
+    fun swapTiles(tileId1: String, tileId2: String) {
+        tileRepository.swapTiles(tileId1, tileId2)
     }
 
     fun moveTile(fromIndex: Int, toIndex: Int) {
         tileRepository.moveTile(fromIndex, toIndex)
     }
 
-    fun updateAccentColor(color: AccentColor) {
-        viewModelScope.launch { preferencesManager.updateAccentColor(color) }
+    fun moveTileToGrid(tileId: String, col: Int, row: Int) {
+        tileRepository.moveTileToGrid(tileId, col, row)
     }
 
-    fun updateDarkTheme(isDark: Boolean) {
-        viewModelScope.launch { preferencesManager.updateDarkTheme(isDark) }
+    fun moveGroupToGrid(groupId: String, col: Int, row: Int) {
+        tileRepository.moveGroupToGrid(groupId, col, row)
     }
 
-    fun updateGridColumns(columns: Int) {
-        viewModelScope.launch { preferencesManager.updateGridColumns(columns) }
+    fun updateAccentColor(argb: Long) {
+        viewModelScope.launch { preferencesManager.updateAccentColor(argb) }
     }
 
     fun updateTileOpacity(opacity: Float) {
@@ -136,5 +166,107 @@ class LauncherViewModel @Inject constructor(
 
     fun updateAnimationInterval(intervalMs: Long) {
         viewModelScope.launch { preferencesManager.updateAnimationInterval(intervalMs) }
+    }
+
+    fun updateBevelEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesManager.updateBevelEnabled(enabled) }
+    }
+
+    fun updateBevelDepth(depth: Float) {
+        viewModelScope.launch { preferencesManager.updateBevelDepth(depth) }
+    }
+
+    fun updateDarkMode(enabled: Boolean) {
+        viewModelScope.launch { preferencesManager.updateDarkMode(enabled) }
+    }
+
+    fun createGroup(tileId1: String, tileId2: String) {
+        tileRepository.createGroup(tileId1, tileId2)
+    }
+
+    fun addToGroup(tileId: String, groupId: String) {
+        tileRepository.addToGroup(tileId, groupId)
+    }
+
+    fun renameGroup(groupId: String, newName: String) {
+        tileRepository.renameGroup(groupId, newName)
+    }
+
+    fun ungroupTile(tileId: String) {
+        tileRepository.ungroupTile(tileId)
+    }
+
+    fun toggleGroupExpanded(groupId: String) {
+        tileRepository.toggleGroupExpanded(groupId)
+    }
+
+    fun swapGroupTiles(tileId1: String, tileId2: String) {
+        tileRepository.swapGroupTiles(tileId1, tileId2)
+    }
+
+    fun moveGroupTile(tileId: String, targetCol: Int, targetRow: Int) {
+        tileRepository.moveGroupTile(tileId, targetCol, targetRow)
+    }
+
+    // ─────────────── Theme operations ───────────────
+
+    fun saveCurrentAsTheme(name: String) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val theme = SavedTheme(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                accentColorArgb = state.preferences.accentColorArgb,
+                globalTileOpacity = state.preferences.globalTileOpacity,
+                tileAnimationIntervalMs = state.preferences.tileAnimationIntervalMs,
+                tiles = state.tiles.map { tile ->
+                    TileSnapshot(
+                        packageName = tile.packageName,
+                        appName = tile.appName,
+                        columnSpan = tile.columnSpan,
+                        rowSpan = tile.rowSpan,
+                        position = tile.position,
+                        groupId = tile.groupId,
+                        groupName = tile.groupName,
+                        groupCol = tile.groupCol,
+                        groupRow = tile.groupRow,
+                        gridCol = tile.gridCol,
+                        gridRow = tile.gridRow
+                    )
+                }
+            )
+            preferencesManager.saveTheme(theme)
+        }
+    }
+
+    fun applyTheme(theme: SavedTheme) {
+        viewModelScope.launch {
+            // Apply preferences (accent, opacity, animation)
+            preferencesManager.applyThemePreferences(theme)
+
+            // Rebuild tile list from theme snapshots
+            val restoredTiles = theme.tiles.map { snap ->
+                Tile(
+                    packageName = snap.packageName,
+                    appName = snap.appName,
+                    columnSpan = snap.columnSpan,
+                    rowSpan = snap.rowSpan,
+                    position = snap.position,
+                    groupId = snap.groupId,
+                    groupName = snap.groupName,
+                    groupCol = snap.groupCol,
+                    groupRow = snap.groupRow,
+                    gridCol = snap.gridCol,
+                    gridRow = snap.gridRow
+                )
+            }
+            tileRepository.setTiles(restoredTiles)
+        }
+    }
+
+    fun deleteTheme(themeId: String) {
+        viewModelScope.launch {
+            preferencesManager.deleteTheme(themeId)
+        }
     }
 }

@@ -1,0 +1,47 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Rocket body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,22 C54,22 48,34 48,50 C48,58 49,65 51,70 L57,70 C59,65 60,58 60,50 C60,34 54,22 54,22 Z" />
+
+    <!-- Nose cone highlight -->
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M54,22 C54,22 51,30 50,38 L54,28 L58,38 C57,30 54,22 54,22 Z" />
+
+    <!-- Left fin -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,58 L40,72 L48,68 Z" />
+
+    <!-- Right fin -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,58 L68,72 L60,68 Z" />
+
+    <!-- Window / porthole -->
+    <path
+        android:fillColor="#7B1FA2"
+        android:pathData="M54,42 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0" />
+
+    <!-- Window inner glow -->
+    <path
+        android:fillColor="#CE93D8"
+        android:pathData="M54,42 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0" />
+
+    <!-- Exhaust flame outer -->
+    <path
+        android:fillColor="#FF8F00"
+        android:pathData="M51,70 L49,82 L54,76 L59,82 L57,70 Z" />
+
+    <!-- Exhaust flame inner -->
+    <path
+        android:fillColor="#FFEE58"
+        android:pathData="M52,70 L51,78 L54,74 L57,78 L56,70 Z" />
+
+</vector>

@@ -4,7 +4,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import com.mylauncher.data.model.AccentColor
 
 private fun darkColorScheme(accent: Color) = darkColorScheme(
     primary = accent,
@@ -35,14 +34,13 @@ private fun lightColorScheme(accent: Color) = lightColorScheme(
 
 @Composable
 fun MyLauncherTheme(
-    accentColor: AccentColor = AccentColor.COBALT,
-    isDarkTheme: Boolean = isSystemInDarkTheme(),
+    accentColor: Color = Color(0xFF0050EF),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (isDarkTheme) {
-        darkColorScheme(accentColor.color)
+    val colorScheme = if (isSystemInDarkTheme()) {
+        darkColorScheme(accentColor)
     } else {
-        lightColorScheme(accentColor.color)
+        lightColorScheme(accentColor)
     }
 
     MaterialTheme(

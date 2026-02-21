@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.mylauncher.data.model.Tile
-import com.mylauncher.data.model.TileSize
 
 /**
  * A single Metro-style tile composable.
@@ -36,13 +35,15 @@ fun TileItem(
     appIcon: Drawable?,
     accentColor: Color,
     tileOpacity: Float,
+    bevelEnabled: Boolean,
+    bevelDepth: Float,
     columnWidth: Dp,
     gap: Dp,
     isEditMode: Boolean,
+    isSelectedForMove: Boolean = false,
     onTileTap: () -> Unit,
     onTileLongPress: () -> Unit,
     onUnpin: () -> Unit,
-    onResize: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val tileColor = if (tile.colorOverride != null) {
@@ -51,12 +52,18 @@ fun TileItem(
         accentColor
     }
     val opacity = tile.transparencyOverride ?: tileOpacity
-    val tileWidth = columnWidth * tile.size.columnSpan + gap * (tile.size.columnSpan - 1)
-    val tileHeight = columnWidth * tile.size.rowSpan + gap * (tile.size.rowSpan - 1)
+    val tileWidth = columnWidth * tile.columnSpan + gap * (tile.columnSpan - 1)
+    val tileHeight = columnWidth * tile.rowSpan + gap * (tile.rowSpan - 1)
 
-    // Edit mode shrink animation
+    val isSmall = tile.columnSpan <= 1 && tile.rowSpan <= 1
+
+    // Edit mode shrink animation — selected tile is slightly larger to show it's "picked up"
     val editScale by animateFloatAsState(
-        targetValue = if (isEditMode) 0.92f else 1f,
+        targetValue = when {
+            isSelectedForMove -> 0.96f
+            isEditMode -> 0.92f
+            else -> 1f
+        },
         animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
         label = "editScale"
     )
@@ -69,6 +76,10 @@ fun TileItem(
         label = "tilt"
     )
 
+    // Use rememberUpdatedState so the gesture detector always sees the latest callbacks
+    val currentOnTileTap by rememberUpdatedState(onTileTap)
+    val currentOnTileLongPress by rememberUpdatedState(onTileLongPress)
+
     Box(
         modifier = modifier
             .width(tileWidth)
@@ -78,8 +89,16 @@ fun TileItem(
                 rotationX = tiltAngle
                 cameraDistance = 12f * density
             }
+            .then(
+                if (isSelectedForMove) Modifier.border(
+                    width = 2.dp,
+                    color = Color.White,
+                    shape = RoundedCornerShape(2.dp)
+                ) else Modifier
+            )
             .clip(RoundedCornerShape(2.dp))
             .background(tileColor.copy(alpha = opacity))
+            .tileBevel(bevelEnabled, bevelDepth)
             .pointerInput(isEditMode) {
                 detectTapGestures(
                     onPress = {
@@ -90,26 +109,14 @@ fun TileItem(
                             isTilted = false
                         }
                     },
-                    onTap = {
-                        if (isEditMode) {
-                            onResize()
-                        } else {
-                            onTileTap()
-                        }
-                    },
-                    onLongPress = {
-                        onTileLongPress()
-                    }
+                    onTap = { currentOnTileTap() },
+                    onLongPress = if (isEditMode) null else { { currentOnTileLongPress() } }
                 )
             }
     ) {
         // App Icon - centered
         if (appIcon != null) {
-            val iconSize = when (tile.size) {
-                TileSize.SMALL -> 24.dp
-                TileSize.MEDIUM -> 40.dp
-                TileSize.WIDE -> 40.dp
-            }
+            val iconSize = if (isSmall) 36.dp else 60.dp
 
             val bitmap = remember(appIcon) {
                 appIcon.toBitmap(
@@ -125,23 +132,19 @@ fun TileItem(
                     .size(iconSize)
                     .align(Alignment.Center)
                     .then(
-                        if (tile.size != TileSize.SMALL)
+                        if (!isSmall)
                             Modifier.offset(y = (-8).dp)
                         else Modifier
                     )
             )
         }
 
-        // App Name — bottom-left (hidden for Small tiles)
-        if (tile.size != TileSize.SMALL) {
+        // App Name — bottom-left (hidden for small tiles)
+        if (!isSmall) {
             Text(
                 text = tile.appName,
                 color = Color.White,
-                fontSize = when (tile.size) {
-                    TileSize.MEDIUM -> 12.sp
-                    TileSize.WIDE -> 13.sp
-                    else -> 11.sp
-                },
+                fontSize = if (tile.columnSpan >= 4) 13.sp else 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -168,7 +171,7 @@ fun TileItem(
 
             // Size label in edit mode
             Text(
-                text = tile.size.name,
+                text = "${tile.columnSpan}×${tile.rowSpan}",
                 color = Color.White.copy(alpha = 0.6f),
                 fontSize = 9.sp,
                 modifier = Modifier

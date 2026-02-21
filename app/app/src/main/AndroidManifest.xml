@@ -9,6 +9,8 @@
     <!-- Internet for weather API (future) -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+
+
     <application
         android:name=".MyLauncherApp"
         android:allowBackup="true"

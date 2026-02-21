@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import com.mylauncher.data.model.AccentColor
 import com.mylauncher.data.model.AppInfo
 
 /**
@@ -31,8 +30,8 @@ import com.mylauncher.data.model.AppInfo
 @Composable
 fun AppListScreen(
     apps: List<AppInfo>,
-    accentColor: AccentColor,
-    isDarkTheme: Boolean,
+    accentColor: Color,
+    darkModeEnabled: Boolean,
     onAppTap: (String) -> Unit,
     onAppLongPress: (AppInfo) -> Unit,
     onNavigateBack: () -> Unit,
@@ -53,6 +52,7 @@ fun AppListScreen(
         }.toSortedMap()
     }
 
+    val isDarkTheme = darkModeEnabled
     val backgroundColor = if (isDarkTheme) Color(0xFF000000) else Color(0xFFF5F5F5)
     val textColor = if (isDarkTheme) Color.White else Color.Black
 
@@ -86,7 +86,7 @@ fun AppListScreen(
                 unfocusedTextColor = textColor,
                 focusedBorderColor = textColor.copy(alpha = 0.5f),
                 unfocusedBorderColor = textColor.copy(alpha = 0.3f),
-                cursorColor = accentColor.color
+                cursorColor = accentColor
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -121,7 +121,7 @@ fun AppListScreen(
                 ) { app ->
                     AppListItem(
                         app = app,
-                        accentColor = accentColor.color,
+                        accentColor = accentColor,
                         textColor = textColor,
                         onTap = { onAppTap(app.packageName) },
                         onLongPress = { onAppLongPress(app) }

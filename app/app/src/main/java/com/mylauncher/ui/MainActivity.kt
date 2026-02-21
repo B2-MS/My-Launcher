@@ -7,7 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.mylauncher.data.model.AccentColor
+import com.mylauncher.data.model.toComposeColor
 import com.mylauncher.ui.navigation.LauncherNavHost
 import com.mylauncher.ui.theme.MyLauncherTheme
 import com.mylauncher.ui.viewmodel.LauncherViewModel
@@ -24,16 +24,9 @@ class MainActivity : ComponentActivity() {
             val viewModel: LauncherViewModel = hiltViewModel()
             val uiState by viewModel.uiState.collectAsState()
 
-            val accentColor = try {
-                AccentColor.valueOf(uiState.preferences.accentColorName)
-            } catch (e: Exception) {
-                AccentColor.COBALT
-            }
+            val accentColor = uiState.preferences.accentColorArgb.toComposeColor()
 
-            MyLauncherTheme(
-                accentColor = accentColor,
-                isDarkTheme = uiState.preferences.isDarkTheme
-            ) {
+            MyLauncherTheme(accentColor = accentColor) {
                 LauncherNavHost(viewModel = viewModel)
             }
         }
@@ -43,6 +36,7 @@ class MainActivity : ComponentActivity() {
      * Override back press to do nothing — this is a launcher, so Home = this app.
      * On Android 13+ the system handles this differently.
      */
+    @Suppress("MissingSuperCall")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // Launchers should not exit on back press
