@@ -75,48 +75,8 @@ After testing, ask Copilot to update these docs if any features changed:
 | `README.md` | Feature list, project structure, version badge |
 | `docs/RELEASE-NOTES.md` | Add or amend current version entry with new/changed features and known issues |
 | `docs/My Launcher User Guide.md` | Update instructions, screenshots, or sections affected by changes |
+| `docs/backlog.md` | Add new deferred features or remove items that were implemented |
 
 ```
-Update README.md, docs/RELEASE-NOTES.md, and docs/My Launcher User Guide.md to reflect any changes made in this session.
-```
-
----
-
-## Step 4: Update Session Documentation
-
-Ask Copilot to update the session documentation:
-
-### Chat History
-```
-Review our entire conversation and APPEND a summary to docs/chat-history.md
-
-Use this format:
----
-## Session: [Descriptive Topic Title]
-**Date:** [Date]
-
-### Prompts
-1. [First prompt - summarized]
-2. [Second prompt - summarized]
-
-### Outcomes
-- [What was built/changed/fixed]
-- [Key files modified]
----
-
-APPEND to the END of the file. Do not overwrite.
-```
-
-### Prompts Used
-```
-Review our entire conversation and APPEND to docs/prompts-used.md
-
-Extract EVERY prompt/request I made - use my EXACT words, not summaries.
-
-Format:
-## Session: [Date] - [Topic] (vX.X.X)
-1. "[exact prompt 1]"
-2. "[exact prompt 2]"
-
-Then UPDATE the Summary section counts at the top of the file.
+Update README.md, docs/RELEASE-NOTES.md, docs/My Launcher User Guide.md, and docs/backlog.md to reflect any changes made in this session.
 ```
