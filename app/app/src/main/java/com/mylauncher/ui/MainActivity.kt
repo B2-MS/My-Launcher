@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.addCallback
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -20,6 +21,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Launchers should not exit on back press — intercept via OnBackPressedDispatcher
+        onBackPressedDispatcher.addCallback(this) { /* no-op */ }
+
         setContent {
             val viewModel: LauncherViewModel = hiltViewModel()
             val uiState by viewModel.uiState.collectAsState()
@@ -30,15 +34,5 @@ class MainActivity : ComponentActivity() {
                 LauncherNavHost(viewModel = viewModel)
             }
         }
-    }
-
-    /**
-     * Override back press to do nothing — this is a launcher, so Home = this app.
-     * On Android 13+ the system handles this differently.
-     */
-    @Suppress("MissingSuperCall")
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        // Launchers should not exit on back press
     }
 }

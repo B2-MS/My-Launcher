@@ -2,7 +2,6 @@
 *.apk
 *.aab
 *.ap_
-*.aab
 
 # Files for the ART/Dalvik VM
 *.dex
@@ -60,3 +59,9 @@ node_modules/
 
 # VS Code
 .vscode/
+
+# Kotlin compiler metadata
+.kotlin/
+
+# Heap dumps
+*.hprof

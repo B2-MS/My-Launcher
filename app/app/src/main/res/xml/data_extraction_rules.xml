@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data extraction rules for Android 12+ (API 31+) cloud backup.
+  See https://developer.android.com/about/versions/12/backup-restore
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Back up DataStore preferences (accent color, theme, settings) -->
+        <include domain="root" path="." />
+        <!-- Exclude caches -->
+        <exclude domain="cache" path="." />
+        <exclude domain="no-backup" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <exclude domain="cache" path="." />
+    </device-transfer>
+</data-extraction-rules>

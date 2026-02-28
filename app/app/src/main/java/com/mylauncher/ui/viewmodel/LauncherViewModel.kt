@@ -13,6 +13,8 @@ import java.util.UUID
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class LauncherUiState(
@@ -71,8 +73,10 @@ class LauncherViewModel @Inject constructor(
         }
     }
 
-    private fun loadApps() {
-        val apps = appRepository.getInstalledApps()
+    private suspend fun loadApps() {
+        val apps = withContext(Dispatchers.IO) {
+            appRepository.getInstalledApps()
+        }
         _uiState.update { it.copy(apps = apps, isLoading = false) }
 
         // If no tiles exist yet, seed with some defaults from installed apps

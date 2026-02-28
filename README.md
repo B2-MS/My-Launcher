@@ -107,6 +107,7 @@ My Launcher/
 │               ├── MyLauncherApp.kt            # Hilt application
 │               ├── data/
 │               │   ├── model/                  # Data classes (Tile, AppInfo, etc.)
+│               │   │   └── ColorExtensions.kt  # Long.toComposeColor() extension
 │               │   ├── preferences/            # DataStore preferences
 │               │   └── repository/             # App & Tile repositories
 │               ├── di/
@@ -117,6 +118,7 @@ My Launcher/
 │                   ├── viewmodel/              # LauncherViewModel
 │                   ├── screens/                # StartScreen, AppList, Settings
 │                   ├── components/             # TileItem, GroupTile, Dialogs
+│                   │   └── BevelModifier.kt    # Glass bevel effect modifier
 │                   └── theme/                  # Theme, Typography
 └── docs/
     ├── My Launcher PRD.md            # Product Requirements Document
