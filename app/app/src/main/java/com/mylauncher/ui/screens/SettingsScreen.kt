@@ -40,6 +40,7 @@ fun SettingsScreen(
     bevelEnabled: Boolean,
     bevelDepth: Float,
     darkModeEnabled: Boolean,
+    wallpaperOnlyInTiles: Boolean,
     savedThemes: List<SavedTheme>,
     onAccentColorChanged: (Long) -> Unit,
     onTileOpacityChanged: (Float) -> Unit,
@@ -47,6 +48,7 @@ fun SettingsScreen(
     onBevelEnabledChanged: (Boolean) -> Unit,
     onBevelDepthChanged: (Float) -> Unit,
     onDarkModeChanged: (Boolean) -> Unit,
+    onWallpaperOnlyInTilesChanged: (Boolean) -> Unit,
     onSaveTheme: (String) -> Unit,
     onApplyTheme: (SavedTheme) -> Unit,
     onDeleteTheme: (String) -> Unit,
@@ -190,7 +192,38 @@ fun SettingsScreen(
                 }
             }
 
-            // Tile animation interval
+            // Desktop background
+            item {
+                SettingsSection(title = "Desktop", textColor = textColor) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Show wallpaper only through tiles",
+                                color = textColor,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Black background with wallpaper visible inside tiles",
+                                color = textColor.copy(alpha = 0.5f),
+                                fontSize = 12.sp
+                            )
+                        }
+                        Switch(
+                            checked = wallpaperOnlyInTiles,
+                            onCheckedChange = onWallpaperOnlyInTilesChanged,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = currentAccentColor,
+                                checkedTrackColor = currentAccentColor.copy(alpha = 0.5f)
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Dark mode
             item {
                 SettingsSection(title = "Dark Mode", textColor = textColor) {
                     Row(

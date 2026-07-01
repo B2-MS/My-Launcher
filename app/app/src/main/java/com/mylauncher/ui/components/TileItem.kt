@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.mylauncher.data.model.Tile
+import com.mylauncher.service.LiveTileInfo
 
 /**
  * A single Metro-style tile composable.
@@ -44,6 +45,7 @@ fun TileItem(
     onTileTap: () -> Unit,
     onTileLongPress: () -> Unit,
     onUnpin: () -> Unit,
+    liveTileInfo: LiveTileInfo? = null,
     modifier: Modifier = Modifier
 ) {
     val tileColor = if (tile.colorOverride != null) {
@@ -110,7 +112,7 @@ fun TileItem(
                         }
                     },
                     onTap = { currentOnTileTap() },
-                    onLongPress = if (isEditMode) null else { { currentOnTileLongPress() } }
+                    onLongPress = null   // parent's detectDragGesturesAfterLongPress handles this
                 )
             }
     ) {
@@ -151,6 +153,84 @@ fun TileItem(
                     .align(Alignment.BottomStart)
                     .padding(start = 6.dp, bottom = 4.dp, end = 6.dp)
             )
+        }
+
+        // Live tile badge + info overlay
+        if (liveTileInfo != null && liveTileInfo.badgeCount > 0 && !isEditMode) {
+            // Badge count — top right
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(if (liveTileInfo.badgeCount >= 100) 26.dp else 22.dp)
+                    .background(Color.White, RoundedCornerShape(50))
+            ) {
+                Text(
+                    text = if (liveTileInfo.badgeCount > 99) "99+" else liveTileInfo.badgeCount.toString(),
+                    color = tileColor,
+                    fontSize = if (liveTileInfo.badgeCount >= 100) 9.sp else 11.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
+
+            // Live tile text lines for tall tiles (≥ 2×2) — top left
+            if (tile.columnSpan >= 2 && tile.rowSpan >= 2) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 6.dp, top = 6.dp, end = 30.dp)
+                ) {
+                    if (liveTileInfo.line1 != null) {
+                        Text(
+                            text = liveTileInfo.line1,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (liveTileInfo.line2 != null) {
+                        Text(
+                            text = liveTileInfo.line2,
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            // Live tile text for wide but short tiles (≥ 4 wide, 1 row) — right of center
+            else if (tile.columnSpan >= 4 && tile.rowSpan <= 1) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 30.dp)
+                        .fillMaxWidth(0.5f),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    if (liveTileInfo.line1 != null) {
+                        Text(
+                            text = liveTileInfo.line1,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (liveTileInfo.line2 != null) {
+                        Text(
+                            text = liveTileInfo.line2,
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
         }
 
         // Unpin button in edit mode

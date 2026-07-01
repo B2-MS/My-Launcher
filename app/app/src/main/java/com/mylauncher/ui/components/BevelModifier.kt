@@ -9,9 +9,19 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Reusable bevel modifier — draws glass-like gradient edges on a composable.
+ * When bevel is disabled, draws a subtle hairline border so tiles remain distinct.
  */
 fun Modifier.tileBevel(enabled: Boolean, depth: Float): Modifier {
-    if (!enabled || depth <= 0f) return this
+    if (!enabled || depth <= 0f) {
+        return this.drawWithContent {
+            drawContent()
+            // Fine hairline border when bevel is off
+            drawRect(
+                color = Color.White.copy(alpha = 0.15f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+            )
+        }
+    }
     return this.drawWithContent {
         drawContent()
         val bevelWidth = (2.dp.toPx()) * depth

@@ -24,7 +24,8 @@ data class LauncherPreferences(
     val tileAnimationIntervalMs: Long = 5000L,
     val bevelEnabled: Boolean = true,
     val bevelDepth: Float = 1f,
-    val darkModeEnabled: Boolean = true
+    val darkModeEnabled: Boolean = true,
+    val wallpaperOnlyInTiles: Boolean = false
 )
 
 @Singleton
@@ -39,6 +40,7 @@ class PreferencesManager @Inject constructor(
         private val KEY_BEVEL_ENABLED = booleanPreferencesKey("bevel_enabled")
         private val KEY_BEVEL_DEPTH = floatPreferencesKey("bevel_depth")
         private val KEY_DARK_MODE = booleanPreferencesKey("dark_mode_enabled")
+        private val KEY_WALLPAPER_ONLY_IN_TILES = booleanPreferencesKey("wallpaper_only_in_tiles")
     }
 
     val preferencesFlow: Flow<LauncherPreferences> = context.dataStore.data.map { prefs ->
@@ -48,7 +50,8 @@ class PreferencesManager @Inject constructor(
             tileAnimationIntervalMs = prefs[KEY_ANIMATION_INTERVAL] ?: 5000L,
             bevelEnabled = prefs[KEY_BEVEL_ENABLED] ?: true,
             bevelDepth = prefs[KEY_BEVEL_DEPTH] ?: 1f,
-            darkModeEnabled = prefs[KEY_DARK_MODE] ?: true
+            darkModeEnabled = prefs[KEY_DARK_MODE] ?: true,
+            wallpaperOnlyInTiles = prefs[KEY_WALLPAPER_ONLY_IN_TILES] ?: false
         )
     }
 
@@ -80,6 +83,10 @@ class PreferencesManager @Inject constructor(
         context.dataStore.edit { it[KEY_DARK_MODE] = enabled }
     }
 
+    suspend fun updateWallpaperOnlyInTiles(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_WALLPAPER_ONLY_IN_TILES] = enabled }
+    }
+
     suspend fun saveTheme(theme: SavedTheme) {
         context.dataStore.edit { prefs ->
             val existing = (prefs[KEY_SAVED_THEMES] ?: "").toSavedThemes().toMutableList()
@@ -98,12 +105,16 @@ class PreferencesManager @Inject constructor(
         }
     }
 
-    /** Apply a saved theme's preferences (accent, opacity, animation). */
+    /** Apply a saved theme's preferences (all visual settings). */
     suspend fun applyThemePreferences(theme: SavedTheme) {
         context.dataStore.edit { prefs ->
             prefs[KEY_ACCENT_COLOR] = theme.accentColorArgb
             prefs[KEY_TILE_OPACITY] = theme.globalTileOpacity
             prefs[KEY_ANIMATION_INTERVAL] = theme.tileAnimationIntervalMs
+            prefs[KEY_BEVEL_ENABLED] = theme.bevelEnabled
+            prefs[KEY_BEVEL_DEPTH] = theme.bevelDepth
+            prefs[KEY_DARK_MODE] = theme.darkModeEnabled
+            prefs[KEY_WALLPAPER_ONLY_IN_TILES] = theme.wallpaperOnlyInTiles
         }
     }
 }

@@ -9,6 +9,9 @@ import com.mylauncher.data.preferences.LauncherPreferences
 import com.mylauncher.data.preferences.PreferencesManager
 import com.mylauncher.data.repository.AppRepository
 import com.mylauncher.data.repository.TileRepository
+import com.mylauncher.service.LiveTileInfo
+import com.mylauncher.service.NotificationService
+import com.mylauncher.widget.LauncherWidgetHost
 import java.util.UUID
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -23,6 +26,7 @@ data class LauncherUiState(
     val preferences: LauncherPreferences = LauncherPreferences(),
     val expandedGroups: Set<String> = emptySet(),
     val savedThemes: List<SavedTheme> = emptyList(),
+    val liveTileData: Map<String, LiveTileInfo> = emptyMap(),
     val isEditMode: Boolean = false,
     val isLoading: Boolean = true
 )
@@ -32,7 +36,8 @@ class LauncherViewModel @Inject constructor(
     application: Application,
     private val appRepository: AppRepository,
     private val tileRepository: TileRepository,
-    private val preferencesManager: PreferencesManager
+    private val preferencesManager: PreferencesManager,
+    val widgetHost: LauncherWidgetHost
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(LauncherUiState())
@@ -64,6 +69,13 @@ class LauncherViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesManager.savedThemesFlow.collect { themes ->
                 _uiState.update { it.copy(savedThemes = themes) }
+            }
+        }
+
+        // Observe live tile notification data
+        viewModelScope.launch {
+            NotificationService.liveTileData.collect { data ->
+                _uiState.update { it.copy(liveTileData = data) }
             }
         }
 
@@ -105,12 +117,8 @@ class LauncherViewModel @Inject constructor(
         viewModelScope.launch { loadApps() }
     }
 
-    fun launchApp(packageName: String) {
-        val intent = appRepository.getLaunchIntent(packageName)
-        if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            getApplication<Application>().startActivity(intent)
-        }
+    fun launchApp(packageName: String, userSerialNumber: Long = 0L) {
+        appRepository.launchApp(packageName, userSerialNumber)
     }
 
     fun toggleEditMode() {
@@ -118,6 +126,7 @@ class LauncherViewModel @Inject constructor(
     }
 
     fun exitEditMode() {
+        tileRepository.compactGrid()
         _uiState.update { it.copy(isEditMode = false) }
     }
 
@@ -127,12 +136,17 @@ class LauncherViewModel @Inject constructor(
                 packageName = appInfo.packageName,
                 appName = appInfo.appName,
                 columnSpan = 2,
-                rowSpan = 2
+                rowSpan = 2,
+                userSerialNumber = appInfo.userSerialNumber
             )
         )
     }
 
     fun unpinTile(tileId: String) {
+        val tile = _uiState.value.tiles.find { it.id == tileId }
+        if (tile != null && tile.isWidget) {
+            widgetHost.deleteWidgetId(tile.appWidgetId)
+        }
         tileRepository.removeTile(tileId)
     }
 
@@ -184,6 +198,14 @@ class LauncherViewModel @Inject constructor(
         viewModelScope.launch { preferencesManager.updateDarkMode(enabled) }
     }
 
+    fun updateWallpaperOnlyInTiles(enabled: Boolean) {
+        viewModelScope.launch { preferencesManager.updateWallpaperOnlyInTiles(enabled) }
+    }
+
+    fun updateGridColumns(columns: Int) {
+        tileRepository.setGridColumns(columns)
+    }
+
     fun createGroup(tileId1: String, tileId2: String) {
         tileRepository.createGroup(tileId1, tileId2)
     }
@@ -194,6 +216,10 @@ class LauncherViewModel @Inject constructor(
 
     fun renameGroup(groupId: String, newName: String) {
         tileRepository.renameGroup(groupId, newName)
+    }
+
+    fun setGroupSpans(groupId: String, colSpan: Int, rowSpan: Int) {
+        tileRepository.setGroupSpans(groupId, colSpan, rowSpan)
     }
 
     fun ungroupTile(tileId: String) {
@@ -212,6 +238,35 @@ class LauncherViewModel @Inject constructor(
         tileRepository.moveGroupTile(tileId, targetCol, targetRow)
     }
 
+    // ─────────────── Widget operations ───────────────
+
+    /** Allocate a new widget ID for the picker flow. */
+    fun allocateWidgetId(): Int = widgetHost.allocateWidgetId()
+
+    /** Add a bound widget to the tile grid. */
+    fun addWidget(appWidgetId: Int, label: String, columnSpan: Int = 4, rowSpan: Int = 2) {
+        val info = widgetHost.getWidgetInfo(appWidgetId)
+        val packageName = info?.provider?.packageName ?: "widget"
+        tileRepository.addTile(
+            Tile(
+                packageName = packageName,
+                appName = label,
+                columnSpan = columnSpan.coerceIn(1, 6),
+                rowSpan = rowSpan.coerceIn(1, 4),
+                appWidgetId = appWidgetId
+            )
+        )
+    }
+
+    /** Remove a widget tile and delete its widget ID. */
+    fun removeWidget(tileId: String) {
+        val tile = _uiState.value.tiles.find { it.id == tileId }
+        if (tile != null && tile.isWidget) {
+            widgetHost.deleteWidgetId(tile.appWidgetId)
+        }
+        tileRepository.removeTile(tileId)
+    }
+
     // ─────────────── Theme operations ───────────────
 
     fun saveCurrentAsTheme(name: String) {
@@ -223,6 +278,10 @@ class LauncherViewModel @Inject constructor(
                 accentColorArgb = state.preferences.accentColorArgb,
                 globalTileOpacity = state.preferences.globalTileOpacity,
                 tileAnimationIntervalMs = state.preferences.tileAnimationIntervalMs,
+                bevelEnabled = state.preferences.bevelEnabled,
+                bevelDepth = state.preferences.bevelDepth,
+                darkModeEnabled = state.preferences.darkModeEnabled,
+                wallpaperOnlyInTiles = state.preferences.wallpaperOnlyInTiles,
                 tiles = state.tiles.map { tile ->
                     TileSnapshot(
                         packageName = tile.packageName,
@@ -230,12 +289,18 @@ class LauncherViewModel @Inject constructor(
                         columnSpan = tile.columnSpan,
                         rowSpan = tile.rowSpan,
                         position = tile.position,
+                        colorOverride = tile.colorOverride,
+                        transparencyOverride = tile.transparencyOverride,
+                        isLiveTile = tile.isLiveTile,
                         groupId = tile.groupId,
                         groupName = tile.groupName,
                         groupCol = tile.groupCol,
                         groupRow = tile.groupRow,
                         gridCol = tile.gridCol,
-                        gridRow = tile.gridRow
+                        gridRow = tile.gridRow,
+                        groupHeaderColSpan = tile.groupHeaderColSpan,
+                        groupHeaderRowSpan = tile.groupHeaderRowSpan,
+                        userSerialNumber = tile.userSerialNumber
                     )
                 }
             )
@@ -245,7 +310,7 @@ class LauncherViewModel @Inject constructor(
 
     fun applyTheme(theme: SavedTheme) {
         viewModelScope.launch {
-            // Apply preferences (accent, opacity, animation)
+            // Apply all preferences (accent, opacity, animation, bevel, dark mode, wallpaper)
             preferencesManager.applyThemePreferences(theme)
 
             // Rebuild tile list from theme snapshots
@@ -256,12 +321,18 @@ class LauncherViewModel @Inject constructor(
                     columnSpan = snap.columnSpan,
                     rowSpan = snap.rowSpan,
                     position = snap.position,
+                    colorOverride = snap.colorOverride,
+                    transparencyOverride = snap.transparencyOverride,
+                    isLiveTile = snap.isLiveTile,
                     groupId = snap.groupId,
                     groupName = snap.groupName,
                     groupCol = snap.groupCol,
                     groupRow = snap.groupRow,
                     gridCol = snap.gridCol,
-                    gridRow = snap.gridRow
+                    gridRow = snap.gridRow,
+                    groupHeaderColSpan = snap.groupHeaderColSpan,
+                    groupHeaderRowSpan = snap.groupHeaderRowSpan,
+                    userSerialNumber = snap.userSerialNumber
                 )
             }
             tileRepository.setTiles(restoredTiles)

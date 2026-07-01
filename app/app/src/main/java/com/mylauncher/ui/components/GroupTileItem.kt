@@ -51,7 +51,7 @@ fun GroupTileItem(
     isExpanded: Boolean,
     isBeingDragged: Boolean = false,
     onToggleExpand: () -> Unit,
-    onTileTap: (String) -> Unit,
+    onTileTap: (String, Long) -> Unit,
     onTileEditTap: (String) -> Unit,
     onLongPress: () -> Unit,
     onUngroupTile: (String) -> Unit,
@@ -80,7 +80,7 @@ fun GroupTileItem(
             .pointerInput(isEditMode) {
                 detectTapGestures(
                     onTap = { if (isEditMode) onGroupEditTap() else onToggleExpand() },
-                    onLongPress = if (isEditMode) null else { { currentOnLongPress() } }
+                    onLongPress = null   // parent's detectDragGesturesAfterLongPress handles this
                 )
             }
     ) {
@@ -179,14 +179,14 @@ fun GroupExpandedContent(
     columnWidth: Dp,
     gap: Dp,
     isEditMode: Boolean,
-    onTileTap: (String) -> Unit,
+    onTileTap: (String, Long) -> Unit,
     onTileEditTap: (String) -> Unit,
     onSwapGroupTiles: (String, String) -> Unit,
     onMoveGroupTile: (String, Int, Int) -> Unit,
     onUngroupTile: (String) -> Unit,
+    gridColumns: Int = 6,
     modifier: Modifier = Modifier
 ) {
-    val gridColumns = 6
     val expandedWidth = columnWidth * gridColumns + gap * (gridColumns - 1)
 
     // Intra-group drag state
@@ -218,7 +218,10 @@ fun GroupExpandedContent(
         exit = shrinkVertically() + fadeOut(),
         modifier = modifier
     ) {
-        Column(modifier = Modifier.width(expandedWidth)) {
+        Column(modifier = Modifier
+            .width(expandedWidth)
+            .background(Color.Black.copy(alpha = 0.85f))
+        ) {
             // Top line + padding
             Spacer(Modifier.height(8.dp))
             Box(
@@ -269,7 +272,8 @@ fun GroupExpandedContent(
                             width = childW,
                             height = childH,
                             isEditMode = isEditMode,
-                            isDragging = isDraggingChild
+                            isDragging = isDraggingChild,
+                            onUngroupTile = { onUngroupTile(tile.id) }
                         )
 
                         // Transparent overlay captures all gestures
@@ -330,7 +334,7 @@ fun GroupExpandedContent(
                                             if (isEditMode) {
                                                 onTileEditTap(tile.id)
                                             } else {
-                                                onTileTap(tile.packageName)
+                                                onTileTap(tile.packageName, tile.userSerialNumber)
                                             }
                                         }
                                     )
@@ -367,7 +371,8 @@ private fun GroupChildTile(
     width: Dp,
     height: Dp,
     isEditMode: Boolean,
-    isDragging: Boolean
+    isDragging: Boolean,
+    onUngroupTile: () -> Unit = {}
 ) {
     val tileColor = if (tile.colorOverride != null) Color(tile.colorOverride) else accentColor
     val opacity = tile.transparencyOverride ?: tileOpacity
@@ -416,6 +421,21 @@ private fun GroupChildTile(
         }
 
         if (isEditMode) {
+            // Unpin / remove from group button
+            IconButton(
+                onClick = onUngroupTile,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Remove from group",
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+
             Text(
                 text = "${tile.columnSpan}×${tile.rowSpan}",
                 color = Color.White.copy(alpha = 0.6f),

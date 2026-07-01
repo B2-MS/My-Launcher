@@ -22,7 +22,85 @@ class TileRepository @Inject constructor() {
     private val _expandedGroups = MutableStateFlow<Set<String>>(emptySet())
     val expandedGroups: StateFlow<Set<String>> = _expandedGroups.asStateFlow()
 
-    private val gridColumns = 6
+    var gridColumns = 6
+        private set
+
+    /**
+     * Update the grid column count (e.g. when orientation changes).
+     * Reflows all tiles into the new column width while preserving their sizes
+     * and relative ordering.
+     */
+    fun setGridColumns(columns: Int) {
+        if (columns == gridColumns) return
+        gridColumns = columns.coerceAtLeast(6)
+
+        val current = _tiles.value
+        if (current.isEmpty()) return
+
+        // Collect grid entries: standalone tiles and groups (deduplicated)
+        data class GridEntry(
+            val key: String,        // tileId or groupId
+            val isGroup: Boolean,
+            val col: Int,
+            val row: Int,
+            val colSpan: Int,
+            val rowSpan: Int
+        )
+
+        val entries = mutableListOf<GridEntry>()
+        val seenGroups = mutableSetOf<String>()
+
+        for (tile in current) {
+            if (tile.gridCol < 0 || tile.gridRow < 0) continue
+            val gid = tile.groupId
+            if (gid != null) {
+                if (gid in seenGroups) continue
+                seenGroups.add(gid)
+                entries.add(GridEntry(gid, true, tile.gridCol, tile.gridRow, 2, 2))
+            } else {
+                entries.add(GridEntry(tile.id, false, tile.gridCol, tile.gridRow, tile.columnSpan, tile.rowSpan))
+            }
+        }
+
+        // Sort by original position: top-to-bottom, left-to-right
+        entries.sortWith(compareBy({ it.row }, { it.col }))
+
+        // Re-place each entry into the new grid using first-fit
+        val occupied = mutableSetOf<Pair<Int, Int>>()
+        val newPositions = mutableMapOf<String, Pair<Int, Int>>()
+
+        for (entry in entries) {
+            // Clamp span to grid width if needed
+            val cSpan = entry.colSpan.coerceAtMost(gridColumns)
+            val rSpan = entry.rowSpan
+            val (col, row) = findNextAvailableCellFromSet(occupied, cSpan, rSpan)
+            for (dc in 0 until cSpan) {
+                for (dr in 0 until rSpan) {
+                    occupied.add(col + dc to row + dr)
+                }
+            }
+            newPositions[entry.key] = col to row
+        }
+
+        // Apply new positions to all tiles
+        _tiles.value = current.map { tile ->
+            val gid = tile.groupId
+            if (gid != null) {
+                val pos = newPositions[gid]
+                if (pos != null) tile.copy(gridCol = pos.first, gridRow = pos.second) else tile
+            } else {
+                val pos = newPositions[tile.id]
+                if (pos != null) {
+                    val cSpan = tile.columnSpan.coerceAtMost(gridColumns)
+                    if (cSpan != tile.columnSpan) {
+                        tile.copy(gridCol = pos.first, gridRow = pos.second, columnSpan = cSpan)
+                    } else {
+                        tile.copy(gridCol = pos.first, gridRow = pos.second)
+                    }
+                } else tile
+            }
+        }
+    }
 
     fun setTiles(tiles: List<Tile>) {
         _tiles.value = autoAssignGridPositions(tiles).sortedBy { it.position }
@@ -375,6 +453,18 @@ class TileRepository @Inject constructor() {
         }
     }
 
+    /** Resize the group header tile. Updates the first tile's groupHeader spans. */
+    fun setGroupSpans(groupId: String, colSpan: Int, rowSpan: Int) {
+        val groupTiles = _tiles.value.filter { it.groupId == groupId }.sortedBy { it.position }
+        val first = groupTiles.firstOrNull() ?: return
+        val cCol = colSpan.coerceIn(1, gridColumns)
+        val cRow = rowSpan.coerceIn(1, 4)
+        _tiles.value = _tiles.value.map { tile ->
+            if (tile.id == first.id) tile.copy(groupHeaderColSpan = cCol, groupHeaderRowSpan = cRow)
+            else tile
+        }
+    }
+
     /** Remove a tile from its group (ungroup). */
     fun ungroupTile(tileId: String) {
         val current = _tiles.value
@@ -460,6 +550,85 @@ class TileRepository @Inject constructor() {
         val current = _expandedGroups.value.toMutableSet()
         if (groupId in current) current.remove(groupId) else current.add(groupId)
         _expandedGroups.value = current
+    }
+
+    /**
+     * Compact the grid by shifting all tiles upward to remove empty rows.
+     * Each item is moved to the earliest row where it fits without overlapping
+     * already-placed items, preserving column positions and relative ordering.
+     */
+    fun compactGrid() {
+        val current = _tiles.value
+        if (current.isEmpty()) return
+
+        // Collect grid items: standalone tiles and groups (deduplicated)
+        data class GridEntry(
+            val key: String,        // tileId or groupId
+            val isGroup: Boolean,
+            val col: Int,
+            val row: Int,
+            val colSpan: Int,
+            val rowSpan: Int
+        )
+
+        val entries = mutableListOf<GridEntry>()
+        val seenGroups = mutableSetOf<String>()
+
+        for (tile in current) {
+            if (tile.gridCol < 0 || tile.gridRow < 0) continue
+            val gid = tile.groupId
+            if (gid != null) {
+                if (gid in seenGroups) continue
+                seenGroups.add(gid)
+                entries.add(GridEntry(gid, true, tile.gridCol, tile.gridRow, 2, 2))
+            } else {
+                entries.add(GridEntry(tile.id, false, tile.gridCol, tile.gridRow, tile.columnSpan, tile.rowSpan))
+            }
+        }
+
+        // Sort by row first (top→bottom), then column (left→right) for stable compaction
+        entries.sortWith(compareBy({ it.row }, { it.col }))
+
+        // Place each entry at the highest possible row, keeping its column
+        val occupied = mutableSetOf<Pair<Int, Int>>()
+        val newPositions = mutableMapOf<String, Pair<Int, Int>>() // key → (col, row)
+
+        for (entry in entries) {
+            val col = entry.col
+            // Find the first row where this item fits at its current column
+            var bestRow = 0
+            for (r in 0..200) {
+                val fits = (0 until entry.colSpan).all { dc ->
+                    (0 until entry.rowSpan).all { dr ->
+                        (col + dc to r + dr) !in occupied
+                    }
+                }
+                if (fits) {
+                    bestRow = r
+                    break
+                }
+            }
+            // Mark occupied cells
+            for (dc in 0 until entry.colSpan) {
+                for (dr in 0 until entry.rowSpan) {
+                    occupied.add(col + dc to bestRow + dr)
+                }
+            }
+            newPositions[entry.key] = col to bestRow
+        }
+
+        // Apply new positions
+        val seenGroupsApply = mutableSetOf<String>()
+        _tiles.value = current.map { tile ->
+            val gid = tile.groupId
+            if (gid != null) {
+                val pos = newPositions[gid]
+                if (pos != null) tile.copy(gridCol = pos.first, gridRow = pos.second) else tile
+            } else {
+                val pos = newPositions[tile.id]
+                if (pos != null) tile.copy(gridCol = pos.first, gridRow = pos.second) else tile
+            }
+        }
     }
 
     // ─────────────── Grid position helpers ───────────────

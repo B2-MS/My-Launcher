@@ -4,12 +4,15 @@ import android.graphics.drawable.Drawable
 import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Wallpaper
+import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,18 +21,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.mylauncher.data.model.AppInfo
 import com.mylauncher.data.model.GridItem
@@ -41,6 +39,9 @@ import com.mylauncher.ui.components.GroupRenameDialog
 import com.mylauncher.ui.components.GroupTileItem
 import com.mylauncher.ui.components.TileItem
 import com.mylauncher.ui.components.TileSettingsDialog
+import com.mylauncher.ui.components.WidgetTileItem
+import com.mylauncher.service.LiveTileInfo
+import com.mylauncher.widget.LauncherWidgetHost
 import kotlin.math.roundToInt
 
 /**
@@ -57,9 +58,10 @@ fun StartScreen(
     tileOpacity: Float,
     bevelEnabled: Boolean,
     bevelDepth: Float,
+    wallpaperOnlyInTiles: Boolean = false,
     isEditMode: Boolean,
     expandedGroups: Set<String>,
-    onTileTap: (String) -> Unit,
+    onTileTap: (String, Long) -> Unit,
     onTileLongPress: () -> Unit,
     onUnpinTile: (String) -> Unit,
     onSetTileSpans: (String, Int, Int) -> Unit,
@@ -74,18 +76,39 @@ fun StartScreen(
     onMoveTileToGrid: (String, Int, Int) -> Unit,
     onMoveGroupToGrid: (String, Int, Int) -> Unit,
     onRenameGroup: (String, String) -> Unit,
+    onSetGroupSpans: (String, Int, Int) -> Unit,
     onNavigateToAppList: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onExitEditMode: () -> Unit,
+    onChangeWallpaper: () -> Unit,
+    onAddWidget: () -> Unit,
+    onUpdateGridColumns: (Int) -> Unit = {},
+    liveTileData: Map<String, LiveTileInfo> = emptyMap(),
+    widgetHost: LauncherWidgetHost? = null,
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp.dp
+    val screenHeightDp = configuration.screenHeightDp.dp
     val horizontalPadding = 12.dp
     val gap = 4.dp
-    val gridColumns = 6
+
+    // Derive a consistent cell size from the shorter dimension (portrait width),
+    // then compute how many columns fit in the current width so the grid fills
+    // the screen while tiles keep the same physical size in any orientation.
+    val portraitWidth = minOf(screenWidthDp, screenHeightDp)
+    val referenceAvailable = portraitWidth - (horizontalPadding * 2)
+    val referenceCellWidth = (referenceAvailable - gap * 5) / 6  // portrait: 6 columns
+    val referenceCellStep = referenceCellWidth + gap
+
     val availableWidth = screenWidthDp - (horizontalPadding * 2)
+    val gridColumns = ((availableWidth + gap) / referenceCellStep).toInt().coerceAtLeast(6)
     val columnWidth = (availableWidth - gap * (gridColumns - 1)) / gridColumns
+
+    // Notify the repository when the active column count changes (orientation)
+    LaunchedEffect(gridColumns) {
+        onUpdateGridColumns(gridColumns)
+    }
 
     // Grid cell step (width/height of one cell + gap)
     val rowHeight = columnWidth
@@ -105,6 +128,7 @@ fun StartScreen(
     var dragItemKey by remember { mutableStateOf<String?>(null) }
     var dragIsGroup by remember { mutableStateOf(false) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    var dragStartContentY by remember { mutableStateOf(0f) }  // finger Y in content coords at drag start
     // Settled-position dwell tracking for grouping: finger must stay within a
     // small radius of its "settled" position for groupDwellMs to create a group.
     // Natural hand tremor (<20px) is tolerated; any larger movement resets.
@@ -171,7 +195,7 @@ fun StartScreen(
     fun Modifier.tileDragGesture(itemKey: String, isGroup: Boolean): Modifier =
         this.pointerInput(itemKey) {
             detectDragGesturesAfterLongPress(
-                onDragStart = {
+                onDragStart = { startOffset ->
                     if (!currentIsEditMode) onTileLongPress()
                     dragItemKey = itemKey
                     dragIsGroup = isGroup
@@ -180,6 +204,20 @@ fun StartScreen(
                     hoverSettledAt = Offset.Zero
                     hoverSettledTime = 0L
                     dropTarget = null
+
+                    // Compute accurate finger content-Y for auto-scroll.
+                    // startOffset is relative to the tile's own Box.
+                    val items = currentGridItems
+                    val draggedItem = items.find { item ->
+                        when (item) {
+                            is GridItem.Single -> item.tile.id == itemKey
+                            is GridItem.Group -> item.group.groupId == itemKey
+                        }
+                    }
+                    if (draggedItem != null) {
+                        val topPadPx = with(density) { 48.dp.toPx() }
+                        dragStartContentY = topPadPx + draggedItem.gridRow * cellStepYPx + startOffset.y
+                    }
                 },
                 onDrag = { change, dragAmount ->
                     change.consume()
@@ -317,11 +355,80 @@ fun StartScreen(
             )
         }
 
+    // Scroll state — retained so auto-scroll during drag can manipulate it
+    val scrollState = rememberScrollState()
+
+    // Auto-scroll when the drag finger is near the top or bottom edge.
+    val autoScrollThreshold = with(density) { 80.dp.toPx() }  // edge zone size
+    val autoScrollMaxSpeed = with(density) { 12.dp.toPx() }   // max px per frame
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+
+    // Continuous auto-scroll loop: runs while a drag is active.
+    // Reads dragOffset + scrollState each frame for accurate finger Y.
+    LaunchedEffect(dragItemKey) {
+        if (dragItemKey == null) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(16L) // ~60 fps
+            val fingerScreenY = dragStartContentY - scrollState.value + dragOffset.y
+
+            when {
+                fingerScreenY < autoScrollThreshold -> {
+                    // Proportional speed: closer to edge = faster
+                    val intensity = 1f - (fingerScreenY / autoScrollThreshold).coerceIn(0f, 1f)
+                    val amount = -(autoScrollMaxSpeed * intensity).toInt().coerceAtLeast(1)
+                    scrollState.scrollTo((scrollState.value + amount).coerceAtLeast(0))
+                }
+                fingerScreenY > screenHeightPx - autoScrollThreshold -> {
+                    val intensity = 1f - ((screenHeightPx - fingerScreenY) / autoScrollThreshold).coerceIn(0f, 1f)
+                    val amount = (autoScrollMaxSpeed * intensity).toInt().coerceAtLeast(1)
+                    scrollState.scrollTo((scrollState.value + amount).coerceAtMost(scrollState.maxValue))
+                }
+            }
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
+
+        // When "wallpaper only in tiles" is enabled, draw a black mask over
+        // the entire screen and punch transparent holes at each tile's
+        // position so the system wallpaper shows through only there.
+        if (wallpaperOnlyInTiles) {
+            val topPaddingPx = with(density) { 48.dp.toPx() }
+            val hPadPx = with(density) { horizontalPadding.toPx() }
+            val gapPx = with(density) { gap.toPx() }
+            androidx.compose.foundation.Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+            ) {
+                drawRect(Color.Black)
+                val scrollPx = scrollState.value.toFloat()
+                for (item in gridItems) {
+                    val x = hPadPx + item.gridCol * cellStepXPx
+                    val y = topPaddingPx + item.gridRow * cellStepYPx - scrollPx
+                    val w = item.colSpan * cellStepXPx - gapPx
+                    val h = item.rowSpan * cellStepYPx - gapPx
+                    drawRect(
+                        color = Color.Transparent,
+                        topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                        size = androidx.compose.ui.geometry.Size(w, h),
+                        blendMode = androidx.compose.ui.graphics.BlendMode.Clear
+                    )
+                }
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = {
+                            if (!currentIsEditMode) onTileLongPress()
+                        }
+                    )
+                }
                 .padding(
                     start = horizontalPadding,
                     end = horizontalPadding,
@@ -381,27 +488,40 @@ fun StartScreen(
                                             }
                                             .tileDragGesture(tile.id, isGroup = false)
                                     ) {
-                                        TileItem(
-                                            tile = tile,
-                                            appIcon = iconMap[tile.packageName],
-                                            accentColor = accentColor,
-                                            tileOpacity = tileOpacity,
-                                            bevelEnabled = bevelEnabled,
-                                            bevelDepth = bevelDepth,
-                                            columnWidth = columnWidth,
-                                            gap = gap,
-                                            isEditMode = isEditMode,
-                                            isSelectedForMove = isDragging,
-                                            onTileTap = {
-                                                if (!isEditMode) {
-                                                    onTileTap(tile.packageName)
-                                                } else {
-                                                    showSettingsForTileId = tile.id
-                                                }
-                                            },
-                                            onTileLongPress = { /* handled by drag gesture */ },
-                                            onUnpin = { onUnpinTile(tile.id) }
-                                        )
+                                        if (tile.isWidget && widgetHost != null) {
+                                            WidgetTileItem(
+                                                tile = tile,
+                                                widgetHost = widgetHost,
+                                                columnWidth = columnWidth,
+                                                gap = gap,
+                                                isEditMode = isEditMode,
+                                                onEditTap = { showSettingsForTileId = tile.id },
+                                                onUnpin = { onUnpinTile(tile.id) }
+                                            )
+                                        } else {
+                                            TileItem(
+                                                tile = tile,
+                                                appIcon = iconMap[tile.packageName],
+                                                accentColor = accentColor,
+                                                tileOpacity = tileOpacity,
+                                                bevelEnabled = bevelEnabled,
+                                                bevelDepth = bevelDepth,
+                                                columnWidth = columnWidth,
+                                                gap = gap,
+                                                isEditMode = isEditMode,
+                                                isSelectedForMove = isDragging,
+                                                onTileTap = {
+                                                    if (!isEditMode) {
+                                                        onTileTap(tile.packageName, tile.userSerialNumber)
+                                                    } else {
+                                                        showSettingsForTileId = tile.id
+                                                    }
+                                                },
+                                                onTileLongPress = { /* handled by drag gesture */ },
+                                                onUnpin = { onUnpinTile(tile.id) },
+                                                liveTileInfo = if (tile.isLiveTile) liveTileData[tile.packageName] else null
+                                            )
+                                        }
                                     }
                                 }
                                 is GridItem.Group -> {
@@ -434,7 +554,7 @@ fun StartScreen(
                                             isExpanded = group.groupId in expandedGroups,
                                             isBeingDragged = isDragging,
                                             onToggleExpand = { onToggleGroupExpanded(group.groupId) },
-                                            onTileTap = { packageName -> onTileTap(packageName) },
+                                            onTileTap = { packageName, serial -> onTileTap(packageName, serial) },
                                             onTileEditTap = { tileId -> showSettingsForTileId = tileId },
                                             onLongPress = { /* handled by drag */ },
                                             onUngroupTile = { tileId -> onUngroupTile(tileId) },
@@ -488,11 +608,12 @@ fun StartScreen(
                         columnWidth = columnWidth,
                         gap = gap,
                         isEditMode = isEditMode,
-                        onTileTap = { packageName -> onTileTap(packageName) },
+                        onTileTap = { packageName, serial -> onTileTap(packageName, serial) },
                         onTileEditTap = { tileId -> showSettingsForTileId = tileId },
                         onSwapGroupTiles = { id1, id2 -> onSwapGroupTiles(id1, id2) },
                         onMoveGroupTile = { tileId, col, row -> onMoveGroupTile(tileId, col, row) },
-                        onUngroupTile = { tileId -> onUngroupTile(tileId) }
+                        onUngroupTile = { tileId -> onUngroupTile(tileId) },
+                        gridColumns = gridColumns
                     )
                     Spacer(modifier = Modifier.height(gap))
                 }
@@ -509,6 +630,7 @@ fun StartScreen(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
+                    .navigationBarsPadding()
                     .padding(end = 16.dp, bottom = 16.dp)
                     .clickable { onNavigateToAppList() }
                     .padding(8.dp)
@@ -537,7 +659,7 @@ fun StartScreen(
         ) {
             IconButton(
                 onClick = onNavigateToSettings,
-                modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+                modifier = Modifier.navigationBarsPadding().padding(start = 8.dp, bottom = 8.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
@@ -548,21 +670,79 @@ fun StartScreen(
             }
         }
 
-        // "Done" button when in edit mode
+        // Edit-mode bottom bar: Wallpaper | Widgets | Settings | Done
         AnimatedVisibility(
             visible = isEditMode,
             enter = fadeIn() + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            Button(
-                onClick = onExitEditMode,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = accentColor
-                ),
-                modifier = Modifier.padding(bottom = 16.dp)
+            Surface(
+                color = Color.Black.copy(alpha = 0.85f),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Done", color = Color.White)
+                Row(
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(vertical = 10.dp)
+                ) {
+                    // Wallpaper
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable { onChangeWallpaper() }
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Wallpaper,
+                            contentDescription = "Wallpaper",
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text("Wallpaper", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                    }
+                    // Widgets
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable { onAddWidget() }
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Widgets,
+                            contentDescription = "Widgets",
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text("Widgets", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                    }
+                    // Preferences
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable { onNavigateToSettings() }
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Preferences",
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text("Preferences", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                    }
+                    // Done
+                    Button(
+                        onClick = onExitEditMode,
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp)
+                    ) {
+                        Text("Done", color = Color.White)
+                    }
+                }
             }
         }
 
@@ -579,17 +759,22 @@ fun StartScreen(
             )
         }
 
-        // Group rename dialog
+        // Group settings dialog (rename + resize)
         val renameGroupItem = gridItems.filterIsInstance<GridItem.Group>()
             .find { it.group.groupId == showRenameForGroupId }
         if (renameGroupItem != null) {
             GroupRenameDialog(
                 currentName = renameGroupItem.group.name,
+                currentColSpan = renameGroupItem.group.columnSpan,
+                currentRowSpan = renameGroupItem.group.rowSpan,
+                gridColumns = gridColumns,
                 accentColor = accentColor,
                 onDismiss = { showRenameForGroupId = null },
                 onRename = { newName ->
                     onRenameGroup(renameGroupItem.group.groupId, newName)
-                    showRenameForGroupId = null
+                },
+                onSetSpans = { colSpan, rowSpan ->
+                    onSetGroupSpans(renameGroupItem.group.groupId, colSpan, rowSpan)
                 }
             )
         }

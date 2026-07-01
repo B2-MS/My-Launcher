@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,7 +33,7 @@ fun AppListScreen(
     apps: List<AppInfo>,
     accentColor: Color,
     darkModeEnabled: Boolean,
-    onAppTap: (String) -> Unit,
+    onAppTap: (String, Long) -> Unit,
     onAppLongPress: (AppInfo) -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -117,13 +118,13 @@ fun AppListScreen(
                 // Apps in this letter group
                 items(
                     items = appsInGroup,
-                    key = { "app_${it.packageName}" }
+                    key = { "app_${it.packageName}_${it.userSerialNumber}" }
                 ) { app ->
                     AppListItem(
                         app = app,
                         accentColor = accentColor,
                         textColor = textColor,
-                        onTap = { onAppTap(app.packageName) },
+                        onTap = { onAppTap(app.packageName, app.userSerialNumber) },
                         onLongPress = { onAppLongPress(app) }
                     )
                 }
@@ -179,7 +180,19 @@ private fun AppListItem(
             color = textColor,
             fontSize = 16.sp,
             fontWeight = FontWeight.Normal,
-            maxLines = 1
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
         )
+
+        // Work-profile badge
+        if (app.isWorkProfile) {
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.Default.Work,
+                contentDescription = "Work profile",
+                tint = textColor.copy(alpha = 0.5f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }

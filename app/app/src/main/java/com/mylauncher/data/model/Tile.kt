@@ -23,8 +23,14 @@ data class Tile(
     val groupCol: Int = -1,                   // column offset within expanded group (-1 = auto)
     val groupRow: Int = -1,                   // row offset within expanded group (-1 = auto)
     val gridCol: Int = -1,                    // column position in the main grid (-1 = auto)
-    val gridRow: Int = -1                     // row position in the main grid (-1 = auto)
-)
+    val gridRow: Int = -1,                    // row position in the main grid (-1 = auto)
+    val appWidgetId: Int = 0,                 // non-zero = this tile hosts an Android widget
+    val groupHeaderColSpan: Int = 2,          // group header tile width (used on first tile only)
+    val groupHeaderRowSpan: Int = 2,          // group header tile height (used on first tile only)
+    val userSerialNumber: Long = 0L           // user profile serial (0 = personal, else work)
+) {
+    val isWidget: Boolean get() = appWidgetId != 0
+}
 
 /**
  * Helper to extract logical groups from a flat tile list.
@@ -93,8 +99,8 @@ fun buildGridItems(tiles: List<Tile>): List<GridItem> {
                         groupId = item.group.groupId,
                         name = first.groupName ?: "Group",
                         tiles = groupTiles,
-                        columnSpan = 2,   // group header is always 2×2 in the grid
-                        rowSpan = 2,
+                        columnSpan = first.groupHeaderColSpan,
+                        rowSpan = first.groupHeaderRowSpan,
                         position = first.position,
                         gridCol = first.gridCol,
                         gridRow = first.gridRow
